@@ -1,9 +1,21 @@
 // Defining base pathes
 var basePaths = {
-    js: './js/',
-    node: './node_modules/',
-    dev: './src/'
+    node: './node_modules/', //vendor sources: gitignore
+    vendor: './vendor/', //copy here from node_modules via gulp copy-assets: gitignore
+    dev: './src/', //local sass & js to be minified: commit
+    dev_scripts: './src/scripts/',
+    dev_styles: './src/styles/',
+    dev_images: './src/img/',
+    js: './js/', // final compiled files included in theme: optionally commit
+    css: './css/',  // final compiled files included in theme: optionally commit
+    img: './img/',  // final compiled files included in theme: optionally commit
 };
+
+//just to make this obvious for gulp watch
+var rebuildWatchFiles = [
+    basePaths.dev_scripts,
+    basePaths.dev_styles
+];
 
 // browser-sync watched files
 // automatically reloads the page when files changed
@@ -20,6 +32,7 @@ var browserSyncOptions = {
 };
 
 // Defining requirements
+var fs = require('fs');
 var gulp = require('gulp');
 var plumber = require('gulp-plumber');
 var sass = require('gulp-sass');
@@ -46,6 +59,8 @@ function swallowError(self, error) {
     self.emit('end')
 }
 
+//task for Continuous Integration server to run
+gulp.task('ci',  [ 'maybe-copy-assets', 'images', 'styles', 'scripts'], function() { });
 // Run:
 // gulp sass + cssnano + rename
 // Prepare the min.css for production (with 2 pipes to be sure that "child-theme.css" == "child-theme.min.css")
@@ -70,12 +85,19 @@ gulp.task('scss-for-prod', function() {
     return merge(pipe1, pipe2);
 });
 
+gulp.task('maybe-copy-assets', function(){
+  try{
+    fs.accessSync("./vendor/sass/bootstrap4/bootstrap.scss");
+  }catch(err){
+    gulp.start('copy-assets');
+  }
+});
 
 // Run:
 // gulp sourcemaps + sass + reload(browserSync)
 // Prepare the child-theme.css for the development environment
 gulp.task('scss-for-dev', function() {
-    gulp.src('./sass/*.scss')
+    gulp.src( basePaths.dev_styles+'*/*.scss')
         .pipe(plumber({ errorHandler: function (error) { swallowError(this, error); } }))
         .pipe(sourcemaps.init({loadMaps: true}))
         .pipe(sass())
@@ -83,15 +105,16 @@ gulp.task('scss-for-dev', function() {
         .pipe(gulp.dest('./css'))
 });
 
-gulp.task('watch-scss', ['browser-sync'], function () {
-    gulp.watch('./sass/**/*.scss', ['scss-for-dev']);
+gulp.task('watch-scss', [], function () {
+//  gulp.task('watch-scss', ['browser-sync'], function () {
+    gulp.watch([ basePaths.dev_styles+'**/*.scss'], ['scss-for-dev']);
 });
 
 // Run:
 // gulp sass
 // Compiles SCSS files in CSS
 gulp.task('sass', function () {
-    var stream = gulp.src('./sass/*.scss')
+    var stream = gulp.src(basePaths.dev_styles+'*.scss' ) //plz include all includes in here. the end.
         .pipe(plumber({
             errorHandler: function (err) {
                 console.log(err);
@@ -107,16 +130,16 @@ gulp.task('sass', function () {
 // Run:
 // gulp watch
 // Starts watcher. Watcher runs gulp sass task on changes
-gulp.task('watch', function () {
-    gulp.watch('./sass/**/*.scss', ['styles']);
-    gulp.watch([basePaths.dev + 'js/**/*.js','js/**/*.js','!js/child-theme.js','!js/child-theme.min.js'], ['scripts']);
+gulp.task('watch', ['maybe-copy-assets'], function () {
+    gulp.watch([ basePaths.dev_styles +'**/*.scss', basePaths.css], ['styles']);
+    gulp.watch([ basePaths.dev_scripts +'**/*.js' , './scripts/*', basePaths.js,'!js/child-theme.js','!js/child-theme.min.js'], ['scripts']);
 });
 
 // Run:
 // gulp imagemin
 // Running image optimizing task
-gulp.task('imagemin', function(){
-    gulp.src('img/src/**')
+gulp.task('images', function(){
+    gulp.src('./src/img/**')
     .pipe(imagemin())
     .pipe(gulp.dest('img'))
 });
@@ -155,7 +178,7 @@ gulp.task('cleancss', function() {
     .pipe(rimraf());
 });
 
-gulp.task('styles', function(callback){ gulpSequence('sass', 'minify-css')(callback) });
+gulp.task('styles', function(callback){ gulpSequence( 'sass', 'minify-css')(callback) });
 
 // Run:
 // gulp browser-sync
@@ -167,7 +190,7 @@ gulp.task('browser-sync', function() {
 // Run:
 // gulp watch-bs
 // Starts watcher with browser-sync. Browser-sync reloads page automatically on your browser
-gulp.task('watch-bs', ['browser-sync', 'watch', 'scripts'], function () { });
+gulp.task('watch-bs', ['browser-sync', 'watch'], function () { });
 
 // Run:
 // gulp scripts.
@@ -176,11 +199,15 @@ gulp.task('scripts', function() {
     var scripts = [
 
         // Start - All BS4 stuff
-        basePaths.dev + 'js/bootstrap4/bootstrap.js',
+//        basePaths.vendor + 'js/bootstrap4/bootstrap.js',
 
         // End - All BS4 stuff
 
-        basePaths.dev + 'js/skip-link-focus-fix.js'
+//        basePaths.vendor + 'js/skip-link-focus-fix.js',
+//        basePaths.vendor + 'js/navigation.js',
+        //most likely want basePaths.vendor + 'js/jquery.js' too
+        basePaths.dev_scripts +'**/*'
+
     ];
   gulp.src(scripts)
     .pipe(concat('child-theme.min.js'))
@@ -195,8 +222,8 @@ gulp.task('scripts', function() {
 });
 
 // Deleting any file inside the /src folder
-gulp.task('clean-source', function () {
-  return del(['src/**/*',]);
+gulp.task('clean-vendor', function () {
+  return del(['vendor/**/*',]);
 });
 
 // Run:
@@ -206,20 +233,21 @@ gulp.task('clean-source', function () {
 
 // Copy all Bootstrap JS files
 gulp.task('copy-assets', function() {
+// NOTE: All sass goes in vendor-sass. rewriting ./src/sass is a very bad plan.
 
 ////////////////// All Bootstrap 4 Assets /////////////////////////
 // Copy all Bootstrap JS files
     gulp.src(basePaths.node + 'bootstrap/dist/js/**/*.js')
-       .pipe(gulp.dest(basePaths.dev + '/js/bootstrap4'));
+    .pipe(gulp.dest(basePaths.dev_scripts + '/bootstrap4'));
 
 // Copy all Bootstrap SCSS files
     gulp.src(basePaths.node + 'bootstrap/scss/**/*.scss')
-       .pipe(gulp.dest(basePaths.dev + '/sass/bootstrap4'));
+       .pipe(gulp.dest(basePaths.vendor + '/sass/bootstrap4'));
 ////////////////// End Bootstrap 4 Assets /////////////////////////
 
 // Copy all UnderStrap SCSS files
     gulp.src(basePaths.node + 'understrap/sass/**/*.scss')
-       .pipe(gulp.dest(basePaths.dev + '/sass/understrap'));
+       .pipe(gulp.dest(basePaths.vendor + '/sass/understrap'));
 
 // Copy all Font Awesome Fonts
     gulp.src(basePaths.node + 'font-awesome/fonts/**/*.{ttf,woff,woff2,eof,svg}')
@@ -227,19 +255,20 @@ gulp.task('copy-assets', function() {
 
 // Copy all Font Awesome SCSS files
     gulp.src(basePaths.node + 'font-awesome/scss/*.scss')
-        .pipe(gulp.dest(basePaths.dev + '/sass/fontawesome'));
+        .pipe(gulp.dest(basePaths.vendor + '/sass/fontawesome'));
 
-// Copy jQuery
+// Note: We're using Google's jQuery CDN instead.
+// Copy jQuery  // NOTE: this is full, slim & core.js
     gulp.src(basePaths.node + 'jquery/dist/*.js')
-        .pipe(gulp.dest(basePaths.dev + '/js'));
+        .pipe(gulp.dest(basePaths.vendor + '/js'));
 
 // _s SCSS files
     gulp.src(basePaths.node + 'undescores-for-npm/sass/**/*.scss')
-        .pipe(gulp.dest(basePaths.dev + '/sass/underscores'));
+        .pipe(gulp.dest(basePaths.vendor + '/sass/underscores'));
 
-// _s JS files
-    gulp.src(basePaths.node + 'undescores-for-npm/js/*.js')
-        .pipe(gulp.dest(basePaths.dev + '/js'));
+// _s JS files:
+    gulp.src([basePaths.node + 'undescores-for-npm/js/*.js', '!' + basePaths.node + 'undescores-for-npm/js/customizer.js'])
+        .pipe(gulp.dest( basePaths.dev_scripts  ));
 
 
 // Copy Popper JS files
@@ -248,6 +277,14 @@ gulp.task('copy-assets', function() {
 
     gulp.src(basePaths.node + 'popper.js/dist/umd/popper.js')
         .pipe(gulp.dest(basePaths.js));
+
+
+//move sass into ./src/sass: WS only  -- committed.
+//    gulp.src('sass/**/*')
+//        .pipe(gulp.dest(basePaths.dev_styles ));
+      del(['sass/**/*',]); //moved & committed 'em into src/styles'
+
+
 });
 
 // Run
@@ -275,3 +312,8 @@ gulp.task('dist-product', ['clean-dist-product'], function() {
 gulp.task('clean-dist-product', function () {
   return del(['dist-product/**/*',]);
 });
+
+
+
+// Default Task
+gulp.task('default', ['maybe-copy-assets','styles', 'scripts', 'images', 'watch-bs']);
