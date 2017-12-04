@@ -1,0 +1,30 @@
+#/bin/sh
+## do fork updates
+git clone 
+
+# https://help.github.com/articles/configuring-a-remote-for-a-fork/
+git remote -v
+git remote add upstream https://github.com/holger1411/understrap-child.git
+git remote -v
+
+
+# https://help.github.com/articles/syncing-a-fork/
+git fetch upstream
+git checkout master
+git merge upstream/master
+
+## conflict-resolve..
+## usually:
+
+
+
+## test fork updates....
+npm install
+gulp styles
+gulp scripts
+
+##Pages to check:
+domain.com/
+http://local.domain.com/category/uncategorized/
+http://local.domain.com/category-three/corrupti-rerum-et-dolor-asperiores-esse-fugit/
+http://local.domain.com/sample-page/    <<---- should have flex-sections on it

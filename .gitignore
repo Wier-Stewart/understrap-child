@@ -4,7 +4,8 @@ bower_components
 
 node_modules
 
-# src #wtf man!
+src/sass
+src/js
 
 understrap.zip
 
